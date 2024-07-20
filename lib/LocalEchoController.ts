@@ -10,7 +10,7 @@ import {
 	offsetToColRow,
 	getSharedFragment,
 } from "./utils";
-import { Terminal } from "xterm";
+import { Terminal } from "@xterm/xterm";
 
 interface LocalEchoControllerOptions {
 	historySize?: number;
