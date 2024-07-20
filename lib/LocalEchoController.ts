@@ -9,7 +9,36 @@ import {
   isIncompleteInput,
   offsetToColRow,
   getSharedFragment
-} from "./Utils";
+} from "./utils";
+import { Terminal } from "xterm";
+
+interface LocalEchoControllerOptions {
+  historySize?: number;
+  maxAutocompleteEntries?: number;
+}
+
+interface TermSize {
+  cols: number;
+  rows: number;
+}
+
+interface ActivePrompt {
+  prompt: string;
+  continuationPrompt: string;
+  resolve: (value: string) => void;
+  reject: (reason?: any) => void;
+}
+
+interface ActiveCharPrompt {
+  prompt: string;
+  resolve: (value: string) => void;
+  reject: (reason?: any) => void;
+}
+
+interface AutocompleteHandler {
+  fn: Function;
+  args: any[];
+}
 
 /**
  * A local terminal controller is responsible for displaying messages
@@ -23,10 +52,24 @@ import {
  * - Auto-complete hooks
  */
 export default class LocalEchoController {
-  constructor(term = null, options = {}) {
+  private term: Terminal | null;
+  private history: HistoryController;
+  private maxAutocompleteEntries: number;
+  private _autocompleteHandlers: AutocompleteHandler[];
+  private _active: boolean;
+  private _input: string;
+  private _cursor: number;
+  private _activePrompt: ActivePrompt | null;
+  private _activeCharPrompt: ActiveCharPrompt | null;
+  private _termSize: TermSize;
+  private _disposables: { dispose: () => void }[];
+  private _handleTermData: (data: string) => void;
+private _handleTermResize: (data: { rows: number; cols: number }) => void;
+
+  constructor(term: Terminal | null = null, options: LocalEchoControllerOptions = {}) {
     this.term = term;
     this._handleTermData = this.handleTermData.bind(this);
-    this._handleTermResize = this.handleTermResize.bind(this)
+    this._handleTermResize = this.handleTermResize.bind(this);
     
     this.history = new HistoryController(options.historySize || 10);
     this.maxAutocompleteEntries = options.maxAutocompleteEntries || 100;
@@ -45,17 +88,18 @@ export default class LocalEchoController {
     this._disposables = [];
     
     if (term) {
-      if (term.loadAddon) term.loadAddon(this);
+      if ('loadAddon' in term) term.loadAddon(this);
       else this.attach();
     }
   }
 
   // xterm.js new plugin API:
-  activate(term) {
+  activate(term: Terminal): void {
     this.term = term;
     this.attach();
   }
-  dispose() {
+
+  dispose(): void {
     this.detach();
   }
 
@@ -66,8 +110,8 @@ export default class LocalEchoController {
   /**
    *  Detach the controller from the terminal
    */
-  detach() {
-    if (this.term.off) {
+  detach(): void {
+    if (this.term && 'off' in this.term) {
       this.term.off("data", this._handleTermData);
       this.term.off("resize", this._handleTermResize);
     } else {
@@ -79,24 +123,24 @@ export default class LocalEchoController {
   /**
    * Attach controller to the terminal, handling events
    */
-  attach() {
-    if (this.term.on) {
+  attach(): void {
+    if (this.term && 'on' in this.term) {
       this.term.on("data", this._handleTermData);
       this.term.on("resize", this._handleTermResize);
-    } else {
+    } else if (this.term) {
       this._disposables.push(this.term.onData(this._handleTermData));
       this._disposables.push(this.term.onResize(this._handleTermResize));
     }
     this._termSize = {
-      cols: this.term.cols,
-      rows: this.term.rows,
+      cols: this.term ? this.term.cols : 0,
+      rows: this.term ? this.term.rows : 0,
     };
   }
 
   /**
    * Register a handler that will be called to satisfy auto-completion
    */
-  addAutocompleteHandler(fn, ...args) {
+  addAutocompleteHandler(fn: Function, ...args: any[]): void {
     this._autocompleteHandlers.push({
       fn,
       args
@@ -106,7 +150,7 @@ export default class LocalEchoController {
   /**
    * Remove a previously registered auto-complete handler
    */
-  removeAutocompleteHandler(fn) {
+  removeAutocompleteHandler(fn: Function): void {
     const idx = this._autocompleteHandlers.findIndex(e => e.fn === fn);
     if (idx === -1) return;
 
@@ -117,9 +161,9 @@ export default class LocalEchoController {
    * Return a promise that will resolve when the user has completed
    * typing a single line
    */
-  read(prompt, continuationPrompt = "> ") {
+  read(prompt: string, continuationPrompt: string = "> "): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.term.write(prompt);
+      if (this.term) this.term.write(prompt);
       this._activePrompt = {
         prompt,
         continuationPrompt,
@@ -140,9 +184,9 @@ export default class LocalEchoController {
    * This can be active in addition to `.read()` and will be resolved in
    * priority before it.
    */
-  readChar(prompt) {
+  readChar(prompt: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.term.write(prompt);
+      if (this.term) this.term.write(prompt);
       this._activeCharPrompt = {
         prompt,
         resolve,
@@ -154,9 +198,9 @@ export default class LocalEchoController {
   /**
    * Abort a pending read operation
    */
-  abortRead(reason = "aborted") {
+  abortRead(reason: string = "aborted"): void {
     if (this._activePrompt != null || this._activeCharPrompt != null) {
-      this.term.write("\r\n");
+      if (this.term) this.term.write("\r\n");
     }
     if (this._activePrompt != null) {
       this._activePrompt.reject(reason);
@@ -172,23 +216,23 @@ export default class LocalEchoController {
   /**
    * Prints a message and changes line
    */
-  println(message) {
+  println(message: string): void {
     this.print(message + "\n");
   }
 
   /**
    * Prints a message and properly handles new-lines
    */
-  print(message) {
+  print(message: string): void {
     const normInput = message.replace(/[\r\n]+/g, "\n");
-    this.term.write(normInput.replace(/\n/g, "\r\n"));
+    if (this.term) this.term.write(normInput.replace(/\n/g, "\r\n"));
   }
 
   /**
    * Prints a list of items using a wide-format
    */
-  printWide(items, padding = 2) {
-    if (items.length == 0) return println("");
+  printWide(items: string[], padding: number = 2): void {
+    if (items.length == 0) return this.println("");
 
     // Compute item sizes and matrix row/cols
     const itemWidth =
@@ -220,7 +264,7 @@ export default class LocalEchoController {
   /**
    * Apply prompts to the given input
    */
-  applyPrompts(input) {
+  private applyPrompts(input: string): string {
     const prompt = (this._activePrompt || {}).prompt || "";
     const continuationPrompt =
       (this._activePrompt || {}).continuationPrompt || "";
@@ -232,7 +276,7 @@ export default class LocalEchoController {
    * Advances the `offset` as required in order to accompany the prompt
    * additions to the input.
    */
-  applyPromptOffset(input, offset) {
+  private applyPromptOffset(input: string, offset: number): number {
     const newInput = this.applyPrompts(input.substr(0, offset));
     return newInput.length;
   }
@@ -243,7 +287,7 @@ export default class LocalEchoController {
    * This function will erase all the lines that display the current prompt
    * and move the cursor in the beginning of the first line of the prompt.
    */
-  clearInput() {
+  private clearInput(): void {
     const currentPrompt = this.applyPrompts(this._input);
 
     // Get the overall number of lines to clear
@@ -259,11 +303,15 @@ export default class LocalEchoController {
 
     // First move on the last line
     const moveRows = allRows - row - 1;
-    for (var i = 0; i < moveRows; ++i) this.term.write("\x1B[E");
+    for (var i = 0; i < moveRows; ++i) {
+      if (this.term) this.term.write("\x1B[E");
+    }
 
     // Clear current input line(s)
-    this.term.write("\r\x1B[K");
-    for (var i = 1; i < allRows; ++i) this.term.write("\x1B[F\x1B[K");
+    if (this.term) {
+      this.term.write("\r\x1B[K");
+      for (var i = 1; i < allRows; ++i) this.term.write("\x1B[F\x1B[K");
+    }
   }
 
   /**
@@ -272,7 +320,7 @@ export default class LocalEchoController {
    * This function clears all the lines that the current input occupies and
    * then replaces them with the new input.
    */
-  setInput(newInput, clearInput = true) {
+  private setInput(newInput: string, clearInput: boolean = true): void {
     // Clear current input
     if (clearInput) this.clearInput();
 
@@ -295,9 +343,11 @@ export default class LocalEchoController {
     );
     const moveUpRows = newLines - row - 1;
 
-    this.term.write("\r");
-    for (var i = 0; i < moveUpRows; ++i) this.term.write("\x1B[F");
-    for (var i = 0; i < col; ++i) this.term.write("\x1B[C");
+    if (this.term) {
+      this.term.write("\r");
+      for (var i = 0; i < moveUpRows; ++i) this.term.write("\x1B[F");
+      for (var i = 0; i < col; ++i) this.term.write("\x1B[C");
+    }
 
     // Replace input
     this._input = newInput;
@@ -307,12 +357,12 @@ export default class LocalEchoController {
    * This function completes the current input, calls the given callback
    * and then re-displays the prompt.
    */
-  printAndRestartPrompt(callback) {
+  private printAndRestartPrompt(callback: () => Promise<void> | void): void {
     const cursor = this._cursor;
 
     // Complete input
     this.setCursor(this._input.length);
-    this.term.write("\r\n");
+    if (this.term) this.term.write("\r\n");
 
     // Prepare a function that will resume prompt
     const resume = () => {
@@ -336,7 +386,7 @@ export default class LocalEchoController {
    * This function:
    * - Calculates the previous and current
    */
-  setCursor(newCursor) {
+  private setCursor(newCursor: number): void {
     if (newCursor < 0) newCursor = 0;
     if (newCursor > this._input.length) newCursor = this._input.length;
 
@@ -361,17 +411,19 @@ export default class LocalEchoController {
     );
 
     // Adjust vertically
-    if (newRow > prevRow) {
-      for (let i = prevRow; i < newRow; ++i) this.term.write("\x1B[B");
-    } else {
-      for (let i = newRow; i < prevRow; ++i) this.term.write("\x1B[A");
-    }
+    if (this.term) {
+      if (newRow > prevRow) {
+        for (let i = prevRow; i < newRow; ++i) this.term.write("\x1B[B");
+      } else {
+        for (let i = newRow; i < prevRow; ++i) this.term.write("\x1B[A");
+      }
 
-    // Adjust horizontally
-    if (newCol > prevCol) {
-      for (let i = prevCol; i < newCol; ++i) this.term.write("\x1B[C");
-    } else {
-      for (let i = newCol; i < prevCol; ++i) this.term.write("\x1B[D");
+      // Adjust horizontally
+      if (newCol > prevCol) {
+        for (let i = prevCol; i < newCol; ++i) this.term.write("\x1B[C");
+      } else {
+        for (let i = newCol; i < prevCol; ++i) this.term.write("\x1B[D");
+      }
     }
 
     // Set new offset
@@ -381,7 +433,7 @@ export default class LocalEchoController {
   /**
    * Move cursor at given direction
    */
-  handleCursorMove(dir) {
+  private handleCursorMove(dir: number): void {
     if (dir > 0) {
       const num = Math.min(dir, this._input.length - this._cursor);
       this.setCursor(this._cursor + num);
@@ -394,7 +446,7 @@ export default class LocalEchoController {
   /**
    * Erase a character at cursor location
    */
-  handleCursorErase(backspace) {
+  private handleCursorErase(backspace: boolean): void {
     const { _cursor, _input } = this;
     if (backspace) {
       if (_cursor <= 0) return;
@@ -411,7 +463,7 @@ export default class LocalEchoController {
   /**
    * Insert character at cursor location
    */
-  handleCursorInsert(data) {
+  private handleCursorInsert(data: string): void {
     const { _cursor, _input } = this;
     const newInput = _input.substr(0, _cursor) + data + _input.substr(_cursor);
     this._cursor += data.length;
@@ -421,7 +473,7 @@ export default class LocalEchoController {
   /**
    * Handle input completion
    */
-  handleReadComplete() {
+  private handleReadComplete(): void {
     if (this.history) {
       this.history.push(this._input);
     }
@@ -429,7 +481,7 @@ export default class LocalEchoController {
       this._activePrompt.resolve(this._input);
       this._activePrompt = null;
     }
-    this.term.write("\r\n");
+    if (this.term) this.term.write("\r\n");
     this._active = false;
   }
 
@@ -440,7 +492,7 @@ export default class LocalEchoController {
    * updates the cached terminal size information and then re-renders the
    * input. This leads (most of the times) into a better formatted input.
    */
-  handleTermResize(data) {
+  private handleTermResize(data: { rows: number; cols: number }): void {
     const { rows, cols } = data;
     this.clearInput();
     this._termSize = { cols, rows };
@@ -450,14 +502,14 @@ export default class LocalEchoController {
   /**
    * Handle terminal input
    */
-  handleTermData(data) {
+  private handleTermData(data: string): void {
     if (!this._active) return;
 
     // If we have an active character prompt, satisfy it in priority
     if (this._activeCharPrompt != null) {
       this._activeCharPrompt.resolve(data);
       this._activeCharPrompt = null;
-      this.term.write("\r\n");
+      if (this.term) this.term.write("\r\n");
       return;
     }
 
@@ -473,10 +525,10 @@ export default class LocalEchoController {
   /**
    * Handle a single piece of information from the terminal.
    */
-  handleData(data) {
+  private handleData(data: string): void {
     if (!this._active) return;
     const ord = data.charCodeAt(0);
-    let ofs;
+    let ofs: number | null;
 
     // Handle ANSI escape sequences
     if (ord == 0x1b) {
@@ -568,7 +620,7 @@ export default class LocalEchoController {
             // Sort candidates
             candidates.sort();
 
-            // Depending on the number of candidates, we are handing them in
+            // Depending on the number of candidates, we are handling them in
             // a different way.
             if (candidates.length === 0) {
               // No candidates? Just add a space if there is none already
@@ -582,16 +634,15 @@ export default class LocalEchoController {
                 candidates[0].substr(lastToken.length) + " "
               );
             } else if (candidates.length <= this.maxAutocompleteEntries) {
-
-              // search for a shared fragement
-              const sameFragment = getSharedFragment(inputFragment, candidates);
+              // search for a shared fragment
+              const sharedFragment = getSharedFragment(inputFragment, candidates);
               
-              // if there's a shared fragement between the candidates
+              // if there's a shared fragment between the candidates
               // print complete the shared fragment
-              if (sameFragment) {
+              if (sharedFragment) {
                 const lastToken = getLastToken(inputFragment);
                 this.handleCursorInsert(
-                  sameFragment.substr(lastToken.length)
+                  sharedFragment.substr(lastToken.length)
                 );
               }
 
@@ -620,7 +671,7 @@ export default class LocalEchoController {
 
         case "\x03": // CTRL+C
           this.setCursor(this._input.length);
-          this.term.write("^C\r\n" + ((this._activePrompt || {}).prompt || ""));
+          if (this.term) this.term.write("^C\r\n" + ((this._activePrompt || {}).prompt || ""));
           this._input = "";
           this._cursor = 0;
           if (this.history) this.history.rewind();

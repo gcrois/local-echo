@@ -1,8 +1,12 @@
 /**
- * The history controller provides an ring-buffer
+ * The history controller provides a ring-buffer
  */
 export class HistoryController {
-  constructor(size) {
+  private size: number;
+  private entries: string[];
+  private cursor: number;
+
+  constructor(size: number) {
     this.size = size;
     this.entries = [];
     this.cursor = 0;
@@ -11,12 +15,14 @@ export class HistoryController {
   /**
    * Push an entry and maintain ring buffer size
    */
-  push(entry) {
+  push(entry: string): void {
     // Skip empty entries
     if (entry.trim() === "") return;
+
     // Skip duplicate entries
     const lastEntry = this.entries[this.entries.length - 1];
-    if (entry == lastEntry) return;
+    if (entry === lastEntry) return;
+
     // Keep track of entries
     this.entries.push(entry);
     if (this.entries.length > this.size) {
@@ -26,16 +32,16 @@ export class HistoryController {
   }
 
   /**
-   * Rewind history cursor on the last entry
+   * Rewind history cursor to the last entry
    */
-  rewind() {
+  rewind(): void {
     this.cursor = this.entries.length;
   }
 
   /**
    * Returns the previous entry
    */
-  getPrevious() {
+  getPrevious(): string | undefined {
     const idx = Math.max(0, this.cursor - 1);
     this.cursor = idx;
     return this.entries[idx];
@@ -44,7 +50,7 @@ export class HistoryController {
   /**
    * Returns the next entry
    */
-  getNext() {
+  getNext(): string | undefined {
     const idx = Math.min(this.entries.length, this.cursor + 1);
     this.cursor = idx;
     return this.entries[idx];

@@ -1,0 +1,21 @@
+{
+	"compilerOptions": {
+		"composite": true,
+		"target": "ES2020",
+		"useDefineForClassFields": true,
+		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		"module": "ESNext",
+
+		/* Bundler mode */
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"moduleDetection": "force",
+		"emitDeclarationOnly": true,
+
+		/* Variables */
+		"baseUrl": "./"
+	},
+	"include": ["lib"]
+}

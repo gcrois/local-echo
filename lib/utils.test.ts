@@ -1,4 +1,4 @@
-const {
+import {
   wordBoundaries,
   closestLeftBoundary,
   closestRightBoundary,
@@ -6,7 +6,9 @@ const {
   isIncompleteInput,
   collectAutocompleteCandidates,
   getSharedFragment,
-} = require("./Utils");
+} from "./utils";
+
+import { expect, test } from 'vitest';
 
 /**
  * Test word boundary detection
