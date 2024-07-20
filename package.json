@@ -5,7 +5,8 @@
 	"main": "index.ts",
 	"scripts": {
 		"test": "jest",
-		"build": "esbuild index.ts --bundle --outfile=dist/local-echo.js --minify --sourcemap && tsc --declaration --emitDeclarationOnly --outDir dist"
+		"build": "esbuild index.ts --bundle --outfile=dist/local-echo.js --minify --sourcemap && tsc --declaration --emitDeclarationOnly --outDir dist",
+		"style": "prettier --write \"**/*.ts\""
 	},
 	"repository": {
 		"type": "git",
