@@ -307,14 +307,14 @@ export default class LocalEchoController {
 
 		// First move on the last line
 		const moveRows = allRows - row - 1;
-		for (var i = 0; i < moveRows; ++i) {
+		for (let i = 0; i < moveRows; ++i) {
 			if (this.term) this.term.write("\x1B[E");
 		}
 
 		// Clear current input line(s)
 		if (this.term) {
 			this.term.write("\r\x1B[K");
-			for (var i = 1; i < allRows; ++i) this.term.write("\x1B[F\x1B[K");
+			for (let i = 1; i < allRows; ++i) this.term.write("\x1B[F\x1B[K");
 		}
 	}
 
@@ -324,7 +324,7 @@ export default class LocalEchoController {
 	 * This function clears all the lines that the current input occupies and
 	 * then replaces them with the new input.
 	 */
-	private setInput(newInput: string, clearInput: boolean = true): void {
+	setInput(newInput: string, clearInput: boolean = true): void {
 		// Clear current input
 		if (clearInput) this.clearInput();
 
@@ -349,8 +349,8 @@ export default class LocalEchoController {
 
 		if (this.term) {
 			this.term.write("\r");
-			for (var i = 0; i < moveUpRows; ++i) this.term.write("\x1B[F");
-			for (var i = 0; i < col; ++i) this.term.write("\x1B[C");
+			for (let i = 0; i < moveUpRows; ++i) this.term.write("\x1B[F");
+			for (let i = 0; i < col; ++i) this.term.write("\x1B[C");
 		}
 
 		// Replace input
@@ -485,6 +485,22 @@ export default class LocalEchoController {
 	}
 
 	/**
+	 * Fake enter a line -- still add to history, but don't execute
+	 */
+	fakeExecute(input: string): void {
+		const oldInput = this._input;
+		const oldCursor = this._cursor;
+		if (this.history) {
+			this.history.push(input);
+		}
+		// this._input = input;
+		this.setInput(input);
+		this.term.write("\r\n");
+		this.setInput(oldInput);
+		this.setCursor(oldCursor);
+	}
+
+	/**
 	 * Handle input completion
 	 */
 	private handleReadComplete(): void {
@@ -549,7 +565,7 @@ export default class LocalEchoController {
 			switch (data.substr(1)) {
 				case "[A": // Up arrow
 					if (this.history) {
-						let value = this.history.getPrevious();
+						const value = this.history.getPrevious();
 						if (value) {
 							this.setInput(value);
 							this.setCursor(value.length);
