@@ -26,14 +26,14 @@
 	},
 	"homepage": "https://github.com/wavesoft/local-echo#readme",
 	"devDependencies": {
-		"esbuild": "^0.23.0",
+		"esbuild": "^0.23.1",
 		"jest": "^23.6.0",
 		"prettier": "^3.3.3",
 		"regenerator-runtime": "^0.12.1",
-		"typescript": "^5.5.3"
+		"typescript": "^5.5.4"
 	},
 	"dependencies": {
 		"@xterm/xterm": "^5.5.0",
-		"shell-quote": "^1.6.1"
+		"shell-quote": "^1.8.1"
 	}
 }
